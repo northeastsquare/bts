@@ -1,0 +1,9 @@
+--encoder densenet161_bts
+--data_path /
+--dataset rili
+--filenames_file ./train_test_inputs/rili_test_files_with_gt.txt
+--model_name bts_eigen
+--checkpoint_path ./models/bts_eigen/model
+--input_height 720
+--input_width 1280
+--max_depth 50
