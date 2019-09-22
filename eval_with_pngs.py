@@ -98,6 +98,8 @@ def test():
 
         if args.dataset == 'nyu':
             pred_depth = pred_depth.astype(np.float32) / 1000.0
+        elif args.dataset = 'rili':
+            pred_depth = pred_depth.astype(np.float32) / 1000.0
         else:
             pred_depth = pred_depth.astype(np.float32) / 256.0
 

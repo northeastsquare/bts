@@ -368,12 +368,15 @@ class BtsModel(object):
 
             if self.params.dataset == 'nyu':
                 self.mask = self.depth_gt > 0.1
+            elif self.params.dataset == 'rili':
+                self.mask = tf.logical_and(self.depth_gt > 0.05, self.depth_gt < self.params.max_depth)
             else:
                 self.mask = self.depth_gt > 1.0
 
             depth_gt_masked = tf.boolean_mask(self.depth_gt, self.mask)
             depth_est_masked = tf.boolean_mask(self.depth_est, self.mask)
-
+            #depth_est_masked = tf.Print(depth_est_masked, [tf.reduce_max(depth_est_masked), tf.reduce_min(depth_est_masked), tf.reduce_mean(depth_est_masked), \
+            #     tf.reduce_max(depth_gt_masked), tf.reduce_min(depth_gt_masked), tf.reduce_mean(depth_gt_masked)], " depth_est_gt_mask:")
             d = tf.log(depth_est_masked) - tf.log(depth_gt_masked)  # Best
 
             self.silog_loss = tf.sqrt(tf.reduce_mean(d ** 2) - 0.85 * (tf.reduce_mean(d) ** 2)) * 10.0
@@ -383,13 +386,14 @@ class BtsModel(object):
         with tf.device('/cpu:0'):
             tf.summary.scalar('silog_loss', self.silog_loss, collections=self.model_collection)
 
-            depth_gt = tf.where(self.depth_gt < 1e-3, self.depth_gt * 0 + 1e3, self.depth_gt)
-            tf.summary.image('depth_gt', 1 / depth_gt, max_outputs=4, collections=self.model_collection)
-            tf.summary.image('depth_est', 1 / self.depth_est, max_outputs=4, collections=self.model_collection)
+            #depth_gt = tf.where(self.depth_gt < 1e-3, self.depth_gt * 0 + 1e3, self.depth_gt)
+            depth_gt = self.depth_gt
+            tf.summary.image('depth_gt', 1.0*depth_gt/self.max_depth * 255, max_outputs=4, collections=self.model_collection)
+            tf.summary.image('depth_est', self.depth_est/self.params.max_depth*255, max_outputs=4, collections=self.model_collection)
             tf.summary.image('depth_est_cropped',
-                             1 / self.depth_est[:, 8:self.params.height - 8, 8:self.params.width - 8, :], max_outputs=4,
+                             self.depth_est[:, 8:self.params.height - 8, 8:self.params.width - 8, :]/self.params.max_depth*255, max_outputs=4,
                              collections=self.model_collection)
-            tf.summary.image('depth_est_2x2', 1 / self.depth_2x2, max_outputs=4, collections=self.model_collection)
-            tf.summary.image('depth_est_4x4', 1 / self.depth_4x4, max_outputs=4, collections=self.model_collection)
-            tf.summary.image('depth_est_8x8', 1 / self.depth_8x8, max_outputs=4, collections=self.model_collection)
+            tf.summary.image('depth_est_2x2', self.depth_2x2/self.params.max_depth*255, max_outputs=4, collections=self.model_collection)
+            tf.summary.image('depth_est_4x4', self.depth_4x4/self.params.max_depth*255, max_outputs=4, collections=self.model_collection)
+            tf.summary.image('depth_est_8x8', self.depth_8x8/self.params.max_depth*255, max_outputs=4, collections=self.model_collection)
             tf.summary.image('image', self.input_image[:, :, :, ::-1], max_outputs=4, collections=self.model_collection)

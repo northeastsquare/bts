@@ -64,6 +64,8 @@ parser.add_argument('--pretrained_model',          type=str,   help='path to a p
 parser.add_argument('--retrain',                               help='if used with checkpoint_path, will restart training from step zero', action='store_true')
 parser.add_argument('--fix_first_conv_blocks',                 help='if set, will fix the first two conv blocks', action='store_true')
 parser.add_argument('--fix_first_conv_block',                  help='if set, will fix the first conv block', action='store_true')
+parser.add_argument('--fix_densenet',                  help='if set, will fix densenet ', action='store_true')
+
 
 if sys.argv.__len__() == 2:
     arg_filename_with_prefix = '@' + sys.argv[1]
@@ -122,6 +124,31 @@ def build_tensors_in_checkpoint_file(loaded_tensors):
             var_check.add(tensor_aux)
     return full_var_list
 
+def sum_gradients(clone_grads):                        
+    averaged_grads = []
+    for grad_and_vars in zip(*clone_grads):
+        #tf.logging.info("after clone_grads"+str(grad_and_vars))
+        grads = []
+        var = grad_and_vars[0][1]
+        try:
+            for g, v in grad_and_vars:
+                assert v == var
+                grads.append(g)
+            grad = tf.add_n(grads, name = v.op.name + '_summed_gradients')
+        except:
+            import pdb
+            pdb.set_trace()
+        
+        averaged_grads.append((grad, v))
+        
+        tf.summary.histogram("variables_and_gradients_" + grad.op.name, grad, ['model_0'])
+        tf.summary.histogram("variables_and_gradients_" + v.op.name, v, ['model_0'])
+        tf.summary.scalar("variables_and_gradients_" + grad.op.name+\
+            '_mean/var_mean', tf.reduce_mean(grad)/tf.reduce_mean(var), ['model_0'])
+        tf.summary.scalar("variables_and_gradients_" + v.op.name+'_mean',tf.reduce_mean(var), ['model_0'])
+    tf.logging.info("after clone_grads2")
+    return averaged_grads
+
 
 def train(params):
 
@@ -172,9 +199,13 @@ def train(params):
 
                     reuse_variables = True
                     
-                    if args.fix_first_conv_blocks or args.fix_first_conv_block:
+                    if args.fix_densenet or args.fix_first_conv_blocks or args.fix_first_conv_block:
                         trainable_vars = tf.trainable_variables()
-                        if args.fix_first_conv_blocks:
+                        #print(args.fix_densenet, "tranable_vars:", trainable_vars)
+                        if args.fix_densenet:
+                            g_vars = [var for var in
+                                      trainable_vars  if 'densenet' not in var.name]
+                        elif args.fix_first_conv_blocks:
                             g_vars = [var for var in
                                       trainable_vars  if ('conv1' or 'dense_block1' or 'dense_block2' or 'transition_block1' or 'transition_block2') not in var.name]
                         else:
@@ -184,9 +215,12 @@ def train(params):
                         g_vars = None
                     
                     grads = opt_step.compute_gradients(loss, var_list=g_vars)
+   
+                    grads = [(tf.clip_by_value(grad, -0.0001, 0.0001), var) for grad, var in grads]
+
 
                     tower_grads.append(grads)
-
+        #sum_gradients( tower_grads)
         with tf.variable_scope(tf.get_variable_scope()):
             with tf.device('/gpu:%d' % (args.num_gpus - 1)):
                 grads = average_gradients(tower_grads)

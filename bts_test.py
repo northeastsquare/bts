@@ -88,6 +88,8 @@ def test(params):
 
     # SESSION
     config = tf.ConfigProto(allow_soft_placement=True)
+    #config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
 
     # INIT
@@ -99,7 +101,7 @@ def test(params):
     # SAVER
     train_saver = tf.train.Saver()
     
-    with tf.device('/cpu:0'):
+    with tf.device('/gpu:0'):
         restore_path = args.checkpoint_path
 
         # RESTORE
@@ -145,12 +147,17 @@ def test(params):
 
         for s in tqdm(range(num_test_samples)):
             if args.dataset == 'kitti':
-                date_drive = lines[s].split('/')[1]
+                #date_drive = lines[s].split('/')[1]
+                date_drive = lines[s].split('/')[0]
                 filename_png = save_name + '/raw/' + date_drive + '_' + lines[s].split()[0].split('/')[-1].replace('.jpg', '.png')
                 filename_cmap_png = save_name + '/cmap/' + date_drive + '_' + lines[s].split()[0].split('/')[-1].replace('.jpg', '.png')
                 filename_image_png = save_name + '/rgb/' + date_drive + '_' + lines[s].split()[0].split('/')[-1]
             elif args.dataset == 'kitti_benchmark':
                 filename_png = save_name + '/raw/' + lines[s].split()[0].split('/')[-1].replace('.jpg', '.png')
+                filename_cmap_png = save_name + '/cmap/' + lines[s].split()[0].split('/')[-1].replace('.jpg', '.png')
+                filename_image_png = save_name + '/rgb/' + lines[s].split()[0].split('/')[-1]
+            elif args.dataset == 'rili':
+                filename_png = save_name + '/raw/' + lines[s].split()[0].split('/')[-1].replace('.jpg', '.png').replace("Color", "Depth")
                 filename_cmap_png = save_name + '/cmap/' + lines[s].split()[0].split('/')[-1].replace('.jpg', '.png')
                 filename_image_png = save_name + '/rgb/' + lines[s].split()[0].split('/')[-1]
             else:
@@ -160,6 +167,7 @@ def test(params):
                 filename_image_png = save_name + '/rgb/' + scene_name + '_' + lines[s].split()[0].split('/')[1]
 
             rgb_path = os.path.join(args.data_path, lines[s].split()[0])
+            print("paths:", filename_png, filename_cmap_png, filename_image_png, rgb_path)
             image = cv2.imread(rgb_path)
             pred_depth = pred_depths[s]
             pred_8x8 = pred_8x8s[s]
@@ -172,9 +180,12 @@ def test(params):
                 pred_depth_scaled = pred_depth * 1000.0
 
             pred_depth_scaled = pred_depth_scaled.astype(np.uint16)
+            pred_depth_scaled = cv2.resize(pred_depth_scaled, image.shape[:2][::-1], interpolation=cv2.INTER_LINEAR)
+            print("fnamepng:", filename_png)
             cv2.imwrite(filename_png, pred_depth_scaled, [cv2.IMWRITE_PNG_COMPRESSION, 0])
 
-            cv2.imwrite(filename_image_png, image)
+            """cv2.imwrite(filename_image_png, image)
+            
             if args.dataset == 'nyu':
                 pred_depth_cropped = np.zeros((480, 640), dtype=np.float32) + 1
                 pred_depth_cropped[10:-1 - 10, 10:-1 - 10] = pred_depth[10:-1 - 10, 10:-1 - 10]
@@ -199,6 +210,7 @@ def test(params):
                 plt.imsave(filename_lpg_cmap_png, np.log10(pred_4x4), cmap='Greys')
                 filename_lpg_cmap_png = filename_cmap_png.replace('.png', '_2x2.png')
                 plt.imsave(filename_lpg_cmap_png, np.log10(pred_2x2), cmap='Greys')
+            """
 
         return
 

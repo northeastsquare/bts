@@ -34,6 +34,7 @@ class BtsDataloader(object):
         self.degree = degree
 
         self.do_kb_crop = do_kb_crop
+        self.do_random_resize = True
 
         with open(filenames_file, 'r') as f:
             filenames = f.readlines()
@@ -60,14 +61,15 @@ class BtsDataloader(object):
         split_line = tf.string_split([line]).values
         image_path = tf.string_join([self.data_path, split_line[0]])
 
-        if self.params.dataset == 'nyu':
+        if self.params.dataset == 'nyu' or self.params.dataset == 'rili':
             image = tf.image.decode_jpeg(tf.read_file(image_path))
         else:
             image = tf.image.decode_png(tf.read_file(image_path))
-
+        image = tf.Print(image, [tf.shape(image)], 'imageshape:')
         width_o = tf.to_float(array_ops.shape(image)[1])
         image = tf.image.convert_image_dtype(image, tf.float32)
         focal = tf.string_to_number(split_line[2])
+        image = tf.image.resize(image, [640, 1280])#[320, 640])
 
         if self.do_kb_crop is True:
             height = tf.shape(image)[0]
@@ -75,6 +77,7 @@ class BtsDataloader(object):
             top_margin = tf.to_int32(height - 352)
             left_margin = tf.to_int32((width - 1216) / 2)
             image = image[top_margin:top_margin + 352, left_margin:left_margin + 1216, :]
+            print("do_kb_crop: True")
 
         return image, focal
 
@@ -94,26 +97,43 @@ class BtsDataloader(object):
         image_path = tf.string_join([self.data_path, split_line[0]])
         depth_gt_path = tf.string_join([self.gt_path, tf.string_strip(split_line[1])])
 
-        if self.params.dataset == 'nyu':
+        if self.params.dataset == 'nyu' or self.params.dataset == 'rili':
             image = tf.image.decode_jpeg(tf.read_file(image_path))
         else:
             image = tf.image.decode_png(tf.read_file(image_path))
 
         depth_gt = tf.image.decode_png(tf.read_file(depth_gt_path), channels=0, dtype=tf.uint16)
+        #depth_gt = tf.Print(depth_gt, [depth_gt], "depth_gt:")
 
         if self.params.dataset == 'nyu':
             depth_gt = tf.cast(depth_gt, tf.float32) / 1000.0
+        elif self.params.dataset == 'rili':
+            depth_gt = tf.cast(depth_gt,tf.float32)/1000.0
+            #ones = tf.ones_like(depth_gt)*self.params.max_depth
+           
+            #depth_gt = tf.where(depth_gt<self.params.max_depth, depth_gt, ones)
         else:
             depth_gt = tf.cast(depth_gt, tf.float32) / 256.0
+            #pass
+        
 
         image = tf.image.convert_image_dtype(image, tf.float32)
         focal = tf.string_to_number(split_line[2])
-
+        # imageh, imagew = image.shape[:2]#.get_shape().as_list()[:2]#tf.shape(image)[:2]
+        # imageh = int(imageh)
+        # imagew = int(imagew)
+        imageh = 720
+        imagew = 1280
         # To avoid blank boundaries due to pixel registration
         if self.params.dataset == 'nyu':
             depth_gt = depth_gt[45:472, 43:608, :]
             image = image[45:472, 43:608, :]
-
+        #do random resize, keep ratio
+        if self.do_random_resize:
+            min_ratio = tf.maximum(1.0*self.params.height/imageh, 1.0*self.params.width/imagew)
+            rndr = tf.random_uniform([], minval=min_ratio, maxval=1.0)
+            image = tf.image.resize(image, [imageh*rndr, imagew*rndr])
+            depth_gt = tf.image.resize(depth_gt, [imageh*rndr, imagew*rndr])
         if self.do_kb_crop is True:
             print('Cropping training images as kitti benchmark images')
             height = tf.shape(image)[0]
@@ -178,7 +198,7 @@ class BtsDataloader(object):
         num_channels = image.get_shape().as_list()[-1]
         if len(means) != num_channels:
             raise ValueError('len(means) must match the number of channels')
-    
+        #image = tf.Print(image, [tf.shape(image), num_channels], 'num_channnels:')
         channels = tf.split(axis=2, num_or_size_splits=num_channels, value=image)
         for i in range(num_channels):
             channels[i] -= means[i]
